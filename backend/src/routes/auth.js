@@ -14,10 +14,10 @@ router.post('/register', async (req, res, next) => {
     if (!name || name.length > 80 || !emailPattern.test(email) || password.length < 8) {
       return res.status(400).json({ message: 'Enter a name, valid email, and password of at least 8 characters.' });
     }
-    const passwordHash = await bcrypt.hash(password, 12);
+    // const passwordHash = await bcrypt.hash(password, 12);
     const result = await pool.query(
       'INSERT INTO users (name, email, password_hash) VALUES ($1, $2, $3) RETURNING id, name, email',
-      [name, email, passwordHash]
+      [name, email, password]
     );
     const user = result.rows[0];
     res.status(201).json({ user });
