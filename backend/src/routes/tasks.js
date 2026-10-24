@@ -3,6 +3,7 @@ import { pool } from '../db.js';
 import { requireAuth } from '../middleware/auth.js';
 import { taskSelect, validateTask } from '../utils/taskValidation.js';
 import { materializeRecurringOccurrences, nextOccurrenceDate } from '../services/recurringTasks.js';
+import { writeTaskCreatedNotifications } from '../services/taskNotifications.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -156,6 +157,7 @@ router.patch('/:id/status', async (req, res, next) => {
         );
         nextTask = created.rows[0];
         if (!existing.rowCount) {
+          await writeTaskCreatedNotifications(client, req.user.id, [nextTask]);
           await writeHistory(client, { userId: req.user.id, taskId: nextTask.id, title: nextTask.title,
             action: 'recurrence_created', newStatus: 'pending', details: { recurrence: old.recurrence } });
         }

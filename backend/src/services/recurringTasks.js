@@ -1,5 +1,6 @@
 import { pool } from '../db.js';
 import { taskSelect } from '../utils/taskValidation.js';
+import { writeTaskCreatedNotifications } from './taskNotifications.js';
 
 function addDays(dateValue, days) {
   const date = new Date(`${dateValue}T00:00:00Z`);
@@ -56,6 +57,7 @@ export async function materializeRecurringOccurrences(db, root) {
     [root.userId, root.title, root.description, root.subject, root.priority, root.dueTime,
       root.timeZone, root.recurrence, root.recurrenceEndDate, root.id, root.notifyMe === true, dates]
   );
+  await writeTaskCreatedNotifications(db, root.userId, inserted.rows);
   await db.query(
     `INSERT INTO task_history (user_id, task_id, task_title, action, new_status, details)
      SELECT $1, created.id, $2, 'recurrence_created', 'pending',

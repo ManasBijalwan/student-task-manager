@@ -156,8 +156,12 @@ function recurringOccurrences(tasks, start, end) {
       if (date >= start) {
         const key = dateKey(date);
         const actual = sorted.find((candidate) => (Number(candidate.id) === Number(root.id) || Number(candidate.recurrenceSeriesId) === Number(root.id)) && dateKey(candidate.dueDate) === key);
-        occurrences.set(`${root.id}-${key}`, { ...(actual || root), status: actual?.status || 'pending', overdue: actual?.overdue || false,
-          completedAt: actual?.completedAt || null, id: `${root.id}-${key}`, dueDate: key, projected: !actual });
+        // A completed occurrence is finished and should no longer appear on the calendar.
+        // Other dates in the recurring series remain visible, including projected dates.
+        if (actual?.status !== 'completed') {
+          occurrences.set(`${root.id}-${key}`, { ...(actual || root), status: actual?.status || 'pending', overdue: actual?.overdue || false,
+            completedAt: actual?.completedAt || null, id: `${root.id}-${key}`, dueDate: key, projected: !actual });
+        }
       }
       const next = new Date(date);
       if (root.recurrence === 'daily') next.setDate(next.getDate() + 1);
@@ -176,7 +180,7 @@ function recurringOccurrences(tasks, start, end) {
     }
   }
   for (const task of sorted) {
-    if (task.recurrence === 'none' && task.dueDate) {
+    if (task.recurrence === 'none' && task.status !== 'completed' && task.dueDate) {
       const date = new Date(`${dateKey(task.dueDate)}T00:00:00`);
       if (date >= start && date <= end) occurrences.set(`${task.id}-${dateKey(task.dueDate)}`, { ...task, id: `${task.id}-${dateKey(task.dueDate)}` });
     }
