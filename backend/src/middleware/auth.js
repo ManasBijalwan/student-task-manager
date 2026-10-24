@@ -3,7 +3,9 @@ import { getAuthSessionCookie, verifyAuthSession } from '../security/authSession
 
 export async function requireAuth(req, res, next) {
   try {
-    const session = await verifyAuthSession(getAuthSessionCookie(req));
+    const token = getAuthSessionCookie(req);
+    if (!token) return res.status(401).json({ message: 'Authentication is required.' });
+    const session = await verifyAuthSession(token);
     if (!session) return res.status(401).json({ message: 'Your session has expired. Please sign in again.' });
     const result = await pool.query('SELECT id, name, email FROM users WHERE id = $1', [session.id]);
     const user = result.rows[0];
