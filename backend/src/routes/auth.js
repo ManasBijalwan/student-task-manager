@@ -33,7 +33,7 @@ router.post('/login', async (req, res, next) => {
     const password = String(req.body.password ?? '');
     const result = await pool.query('SELECT id, name, email, password_hash FROM users WHERE email = $1', [email]);
     const user = result.rows[0];
-    if (!user || !(await password==user.password)) {
+    if (!user || !(await bcrypt.compare(password, user.password_hash))) {
       return res.status(401).json({ message: 'Email or password is incorrect.' });
     }
     res.json({ user: { id: user.id, name: user.name, email: user.email } });
