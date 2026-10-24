@@ -9,7 +9,7 @@ A small full-stack academic task manager based on the project synopsis. Students
 - Database: PostgreSQL (`pg`)
 - Authentication: bcrypt password hashes checked against the `users` table on each API request; credentials stay in the current browser tab
 
-The project includes GitHub Actions checks, Cloudflare Pages deployment for the frontend, and backend container publishing to GitHub Container Registry.
+The project includes GitHub Actions checks, Cloudflare Pages deployment for the frontend, backend container publishing to GitHub Container Registry, and a Cloudflare Workers backend deployment using Hyperdrive for PostgreSQL access.
 
 ## Features
 
@@ -103,7 +103,7 @@ The suite checks the API health route, authentication protection on task routes,
 
 ## CI/CD setup
 
-The workflow in `.github/workflows/ci-cd.yml` runs `npm ci`, backend tests, and the frontend production build for pull requests and pushes to `main` or `master`. On those branch pushes, it deploys the frontend to Cloudflare Pages when configured and publishes the backend container image to GHCR. It can also call an optional backend hosting deploy hook.
+The workflow in `.github/workflows/ci-cd.yml` runs `npm ci`, backend tests, and the frontend production build for pull requests and pushes to `main` or `master`. On those branch pushes, it deploys the frontend to Cloudflare Pages when configured, deploys the backend to Workers, and publishes the backend container image to GHCR. It can also call an optional backend hosting deploy hook.
 
 To verify CI, push a branch and open a pull request in GitHub, then open **Actions → CI and CD**. The **Test and build** job must pass before merging. A push to `main` or `master` then runs the deployment jobs. Check the job logs for a Cloudflare Pages deployment URL and the GHCR image tag. The deploy jobs require the variables and secrets listed below.
 
@@ -116,3 +116,16 @@ Configure these GitHub repository variables for Pages deployment:
 Add a `CLOUDFLARE_API_TOKEN` repository secret with permission to deploy Pages. Optionally add `BACKEND_DEPLOY_HOOK_URL` as a secret if your backend host provides a deployment webhook. Without a hook, the workflow publishes `ghcr.io/<owner>/<repository>/task-manager-api:latest`; configure your Node/container host to run that image with `DATABASE_URL`, `DATABASE_SSL`, and `CLIENT_URL`.
 
 The backend image requires `DATABASE_URL`, `DATABASE_SSL`, and `CLIENT_URL` at runtime. The Pages build uses `VITE_API_URL` so the browser calls the hosted backend instead of localhost.
+
+## Deploy the backend to Cloudflare Workers
+
+The Worker entry point is `backend/src/worker.js`; local Node and Docker continue to use `backend/src/server.js`. Workers connect to Supabase through a Cloudflare Hyperdrive binding, so the database connection string is stored in Hyperdrive and is not committed to this repository. Recurring task generation runs from the Worker's daily Cron Trigger.
+
+1. In the Cloudflare dashboard, open **Workers & Pages → Hyperdrive → Create configuration**. Select PostgreSQL and enter the Supabase connection string privately. Copy the generated Hyperdrive ID.
+2. Replace `REPLACE_WITH_HYPERDRIVE_ID` in `backend/wrangler.toml` with that ID. Keep the `[vars]` `CLIENT_URL` set to the Pages site origin, then commit this change.
+3. In GitHub repository **Settings → Secrets and variables → Actions**, add the repository variable `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_HYPERDRIVE_ID` (the same ID committed in `wrangler.toml`). Add the secret `CLOUDFLARE_WORKERS_API_TOKEN` with Cloudflare Workers Scripts Edit permission. The existing `CLOUDFLARE_API_TOKEN` secret remains for Pages.
+4. Push the changes to `main` or `master`. The **Deploy backend to Cloudflare Workers** job publishes `studyflow-api`. Its URL will be `https://studyflow-api.<your-workers-subdomain>.workers.dev`.
+5. Set the GitHub repository variable `VITE_API_URL` to `https://studyflow-api.<your-workers-subdomain>.workers.dev/api`, then push a new commit so the Pages workflow rebuilds the frontend with the deployed API URL.
+6. Open `https://studyflow-api.<your-workers-subdomain>.workers.dev/api/health`; it should return `{"status":"ok"}`. Then sign in on the Pages site and confirm task loading works.
+
+For a manual deploy from the project root after configuring the Hyperdrive ID, run `npx wrangler@4 deploy --config backend/wrangler.toml`. Wrangler will prompt you to authenticate if needed. Do not commit the database connection string or API token.

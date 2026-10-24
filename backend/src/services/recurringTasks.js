@@ -81,5 +81,5 @@ export async function maintainRecurringHorizon() {
   } catch (error) {
     await client.query('ROLLBACK').catch(() => {});
     throw error;
-  } finally { client.release(); }
+  } finally { await client.release(); }
 }

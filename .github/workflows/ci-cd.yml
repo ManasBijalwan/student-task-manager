@@ -77,6 +77,50 @@ jobs:
           command: pages deploy frontend/dist --project-name=${{ vars.CLOUDFLARE_PAGES_PROJECT_NAME }} --branch=${{ github.ref_name }}
           gitHubToken: ${{ secrets.GITHUB_TOKEN }}
 
+  deploy-worker:
+    name: Deploy backend to Cloudflare Workers
+    needs: verify
+    if: github.event_name == 'push' && (github.ref_name == 'main' || github.ref_name == 'master')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v6
+
+      - name: Check deployment settings
+        env:
+          CF_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          CF_API_TOKEN: ${{ secrets.CLOUDFLARE_WORKERS_API_TOKEN }}
+          HYPERDRIVE_ID: ${{ vars.CLOUDFLARE_HYPERDRIVE_ID }}
+        run: |
+          if [ -z "$CF_ACCOUNT_ID" ]; then echo "Set the CLOUDFLARE_ACCOUNT_ID repository variable."; exit 1; fi
+          if [ -z "$CF_API_TOKEN" ]; then echo "Set the CLOUDFLARE_WORKERS_API_TOKEN repository secret."; exit 1; fi
+          if [ -z "$HYPERDRIVE_ID" ] || [ "$HYPERDRIVE_ID" = "REPLACE_WITH_HYPERDRIVE_ID" ]; then
+            echo "Create a Hyperdrive configuration and replace the placeholder ID in backend/wrangler.toml."; exit 1
+          fi
+          CONFIG_ID=$(sed -n 's/^id = "\(.*\)"/\1/p' backend/wrangler.toml | head -n 1)
+          if [ "$CONFIG_ID" != "$HYPERDRIVE_ID" ]; then
+            echo "CLOUDFLARE_HYPERDRIVE_ID must match the ID in backend/wrangler.toml."; exit 1
+          fi
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install Worker dependencies
+        run: npm ci
+
+      - name: Deploy API Worker
+        uses: cloudflare/wrangler-action@v4
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_WORKERS_API_TOKEN }}
+          accountId: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          packageManager: npm
+          wranglerVersion: "4"
+          workingDirectory: backend
+          command: deploy
+
   publish-backend:
     name: Publish backend container
     needs: verify

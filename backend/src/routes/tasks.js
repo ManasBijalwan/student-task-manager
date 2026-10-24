@@ -73,7 +73,7 @@ router.post('/', async (req, res, next) => {
   } catch (error) {
     await client.query('ROLLBACK').catch(() => {});
     next(error);
-  } finally { client.release(); }
+  } finally { await client.release(); }
 });
 
 router.put('/:id', async (req, res, next) => {
@@ -105,7 +105,7 @@ router.put('/:id', async (req, res, next) => {
   } catch (error) {
     await client.query('ROLLBACK').catch(() => {});
     next(error);
-  } finally { client.release(); }
+  } finally { await client.release(); }
 });
 
 router.patch('/:id/status', async (req, res, next) => {
@@ -166,7 +166,7 @@ router.patch('/:id/status', async (req, res, next) => {
   } catch (error) {
     await client.query('ROLLBACK').catch(() => {});
     next(error);
-  } finally { client.release(); }
+  } finally { await client.release(); }
 });
 
 router.delete('/:id', async (req, res, next) => {
@@ -187,7 +187,7 @@ router.delete('/:id', async (req, res, next) => {
   } catch (error) {
     await client.query('ROLLBACK').catch(() => {});
     next(error);
-  } finally { client.release(); }
+  } finally { await client.release(); }
 });
 
 export default router;
