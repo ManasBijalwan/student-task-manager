@@ -7,7 +7,7 @@ A small full-stack academic task manager based on the project synopsis. Students
 - Frontend: React, Vite, HTML, CSS, JavaScript
 - Backend: Node.js, Express, REST API
 - Database: PostgreSQL (`pg`)
-- Authentication: bcrypt password hashes checked against the `users` table on each API request; credentials stay in the current browser tab
+- Authentication: PostgreSQL bcrypt password checks at login, followed by a signed HttpOnly session cookie for protected API requests
 
 The project includes GitHub Actions checks, Cloudflare Pages deployment for the frontend, backend container publishing to GitHub Container Registry, and a Cloudflare Workers backend deployment using Hyperdrive for PostgreSQL access.
 
@@ -33,11 +33,13 @@ Create a database named `student_tasks` in your local PostgreSQL installation (o
 
 ### 2. Configure environment files
 
-Create `backend/.env` with `PORT`, `DATABASE_URL`, `DATABASE_SSL`, and `CLIENT_URL`. Set `DATABASE_URL` to your PostgreSQL connection string.
+Create `backend/.env` with `PORT`, `DATABASE_URL`, `DATABASE_SSL`, `CLIENT_URL`, and `AUTH_TOKEN_SECRET`. Set `DATABASE_URL` to your PostgreSQL connection string and set `AUTH_TOKEN_SECRET` to a private random value of at least 32 characters.
 
 Create `frontend/.env` with `VITE_PORT` and `VITE_API_URL`. For local development, use `VITE_API_URL=http://localhost:5001/api`.
 
 ### 3. Update the Supabase schema
+
+Enable the `pgcrypto` extension in Supabase (in the `extensions` schema). Password hashing and verification use `extensions.crypt` in PostgreSQL to keep bcrypt CPU work off Cloudflare Workers. If accounts were created while plaintext password storage was enabled, run [`supabase/migrate_legacy_plaintext_passwords.sql`](supabase/migrate_legacy_plaintext_passwords.sql) once after enabling the extension; it converts non-bcrypt values to bcrypt hashes and leaves existing bcrypt hashes unchanged.
 
 Run [`supabase/notifications_persistence.sql`](supabase/notifications_persistence.sql) manually in the Supabase SQL Editor to ensure `tasks.notify_me` exists and create the in-app notification history table. The backend never reads or runs these files and does not create or alter tables on startup.
 
@@ -124,8 +126,9 @@ The Worker entry point is `backend/src/worker.js`; local Node and Docker continu
 1. In the Cloudflare dashboard, open **Workers & Pages → Hyperdrive → Create configuration**. Select PostgreSQL and enter the Supabase connection string privately. Copy the generated Hyperdrive ID.
 2. Replace `REPLACE_WITH_HYPERDRIVE_ID` in `backend/wrangler.toml` with that ID. Keep the `[vars]` `CLIENT_URL` set to the Pages site origin, then commit this change.
 3. In GitHub repository **Settings → Secrets and variables → Actions**, add the repository variable `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_HYPERDRIVE_ID` (the same ID committed in `wrangler.toml`). Add the secret `CLOUDFLARE_WORKERS_API_TOKEN` with Cloudflare Workers Scripts Edit permission. The existing `CLOUDFLARE_API_TOKEN` secret remains for Pages.
-4. Push the changes to `main` or `master`. The **Deploy backend to Cloudflare Workers** job publishes `studyflow-api`. Its URL will be `https://studyflow-api.<your-workers-subdomain>.workers.dev`.
-5. Set the GitHub repository variable `VITE_API_URL` to `https://studyflow-api.<your-workers-subdomain>.workers.dev/api`, then push a new commit so the Pages workflow rebuilds the frontend with the deployed API URL.
-6. Open `https://studyflow-api.<your-workers-subdomain>.workers.dev/api/health`; it should return `{"status":"ok"}`. Then sign in on the Pages site and confirm task loading works.
+4. In the Cloudflare Worker’s **Settings → Variables and Secrets**, add `AUTH_TOKEN_SECRET` as a secret. Generate a random value locally with `node -e "console.log(require('node:crypto').randomBytes(32).toString('base64url'))"` and keep it private.
+5. Push the changes to `main` or `master`. The **Deploy backend to Cloudflare Workers** job publishes `studyflow-api`. Its URL will be `https://studyflow-api.<your-workers-subdomain>.workers.dev`.
+6. Set the GitHub repository variable `VITE_API_URL` to `https://studyflow-api.<your-workers-subdomain>.workers.dev/api`, then push a new commit so the Pages workflow rebuilds the frontend with the deployed API URL.
+7. Open `https://studyflow-api.<your-workers-subdomain>.workers.dev/api/health`; it should return `{"status":"ok"}`. Then sign in on the Pages site and confirm task loading works.
 
 For a manual deploy from the project root after configuring the Hyperdrive ID, run `npx wrangler@4 deploy --config backend/wrangler.toml`. Wrangler will prompt you to authenticate if needed. Do not commit the database connection string or API token.

@@ -1,7 +1,7 @@
 import { Router } from 'express';
-import bcrypt from 'bcryptjs';
 import { pool } from '../db.js';
 import { requireAuth } from '../middleware/auth.js';
+import { clearAuthSessionCookie, createAuthSession, setAuthSessionCookie } from '../security/authSession.js';
 
 const router = Router();
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -14,12 +14,12 @@ router.post('/register', async (req, res, next) => {
     if (!name || name.length > 80 || !emailPattern.test(email) || password.length < 8) {
       return res.status(400).json({ message: 'Enter a name, valid email, and password of at least 8 characters.' });
     }
-    const passwordHash = await bcrypt.hash(password, 12);
     const result = await pool.query(
-      'INSERT INTO users (name, email, password_hash) VALUES ($1, $2, $3) RETURNING id, name, email',
-      [name, email, passwordHash]
+      "INSERT INTO users (name, email, password_hash) VALUES ($1, $2, extensions.crypt($3, extensions.gen_salt('bf', 10))) RETURNING id, name, email",
+      [name, email, password]
     );
     const user = result.rows[0];
+    setAuthSessionCookie(res, await createAuthSession(user));
     res.status(201).json({ user });
   } catch (error) {
     if (error.code === '23505') return res.status(409).json({ message: 'An account with that email already exists.' });
@@ -31,13 +31,22 @@ router.post('/login', async (req, res, next) => {
   try {
     const email = String(req.body.email ?? '').trim().toLowerCase();
     const password = String(req.body.password ?? '');
-    const result = await pool.query('SELECT id, name, email, password_hash FROM users WHERE email = $1', [email]);
+    const result = await pool.query(
+      'SELECT id, name, email FROM users WHERE email = $1 AND password_hash = extensions.crypt($2, password_hash)',
+      [email, password]
+    );
     const user = result.rows[0];
-    if (!user || !(await bcrypt.compare(password, user.password_hash))) {
+    if (!user) {
       return res.status(401).json({ message: 'Email or password is incorrect.' });
     }
+    setAuthSessionCookie(res, await createAuthSession(user));
     res.json({ user: { id: user.id, name: user.name, email: user.email } });
   } catch (error) { next(error); }
+});
+
+router.post('/logout', (_req, res) => {
+  clearAuthSessionCookie(res);
+  res.status(204).end();
 });
 
 router.get('/me', requireAuth, async (req, res, next) => {

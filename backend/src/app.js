@@ -13,7 +13,10 @@ export function configureClientOrigin(origin) {
   if (origin) clientOrigin = origin;
 }
 
-app.use(cors({ origin: (origin, callback) => callback(null, !origin || origin === clientOrigin) }));
+app.use(cors({
+  origin: (origin, callback) => callback(null, !origin || origin === clientOrigin),
+  credentials: true
+}));
 app.use(express.json({ limit: '100kb' }));
 app.get('/api/health', (_req, res) => res.json({ status: 'ok' }));
 app.use('/api/auth', authRoutes);

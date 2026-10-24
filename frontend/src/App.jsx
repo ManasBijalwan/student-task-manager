@@ -25,7 +25,7 @@ function readLocalNotifications(email) {
 function readSavedAuth() {
   try {
     const saved = JSON.parse(sessionStorage.getItem('studyflow-auth') || 'null');
-    if (saved?.credentials?.email && saved?.credentials?.password && saved?.user) return saved;
+    if (saved?.user && !saved?.credentials) return saved;
   } catch {}
   sessionStorage.removeItem('studyflow-auth');
   return null;
@@ -59,7 +59,7 @@ function Auth({ onLogin }) {
     event.preventDefault(); setError(''); setLoading(true);
     try {
       const data = await request(`/auth/${isRegistering ? 'register' : 'login'}`, { method: 'POST', body: form });
-      onLogin(data, { email: form.email.trim().toLowerCase(), password: form.password });
+      onLogin(data);
     } catch (err) { setError(err.message); } finally { setLoading(false); }
   }
   return <main className="auth-page">
@@ -240,7 +240,7 @@ export default function App() {
   const userEmail = String(session?.user?.email || '').trim().toLowerCase();
   const [notifications, setNotifications] = useState(() => userEmail ? readLocalNotifications(userEmail) : []);
   const [notificationOpen, setNotificationOpen] = useState(false);
-  const credentials = session?.credentials;
+  const isAuthenticated = Boolean(session?.user);
   const displayName = String(session?.user?.name || session?.user?.email || 'Student');
 
   useEffect(() => {
@@ -249,44 +249,44 @@ export default function App() {
   }, [userEmail]);
 
   async function load() {
-    if (!credentials) return;
+    if (!isAuthenticated) return;
     setError('');
     let loadError = '';
     try {
-      const response = await request('/notifications', { credentials });
+      const response = await request('/notifications');
       const saved = (response.notifications || []).map((item) => ({ ...item, id: item.eventKey }));
       setNotifications(saved);
       writeLocalJson(notificationKey(userEmail), saved);
     } catch (err) { loadError = err.message; }
     try {
-      const response = await request('/tasks', { credentials });
+      const response = await request('/tasks');
       const rows = Array.isArray(response.tasks) ? response.tasks : [];
       setTasks(rows.map((task) => ({ ...task, notifyMe: task.notifyMe === true })));
     }
     catch (err) { loadError = err.message; }
-    try { setDashboard(await request('/dashboard', { credentials })); }
+    try { setDashboard(await request('/dashboard')); }
     catch (err) { loadError ||= err.message; }
     if (view === 'history') {
-      try { const response = await request('/tasks/history', { credentials }); setHistoryEvents(response.events || []); }
+      try { const response = await request('/tasks/history'); setHistoryEvents(response.events || []); }
       catch (err) { loadError ||= err.message; }
     }
     if (loadError) setError(loadError);
   }
-  useEffect(() => { load(); }, [credentials, view, userEmail]);
+  useEffect(() => { load(); }, [isAuthenticated, view, userEmail]);
 
-  function login(data, submittedCredentials) {
-    const auth = { credentials: submittedCredentials, user: data.user };
+  function login(data) {
+    const auth = { user: data.user };
     sessionStorage.setItem('studyflow-auth', JSON.stringify(auth));
     setSession(auth);
   }
-  function logout() { sessionStorage.removeItem('studyflow-auth'); setSession(null); setTasks([]); setDashboard(null); setHistoryEvents([]); setNotifications([]); }
+  function logout() { request('/auth/logout', { method: 'POST' }).catch(() => {}); sessionStorage.removeItem('studyflow-auth'); setSession(null); setTasks([]); setDashboard(null); setHistoryEvents([]); setNotifications([]); }
   function addNotification(notification) {
     const current = readLocalNotifications(userEmail);
     if (current.some((item) => item.id === notification.id)) return;
     const next = [{ ...notification, createdAt: new Date().toISOString(), read: false }, ...current].slice(0, 80);
     if (userEmail) writeLocalJson(notificationKey(userEmail), next);
     setNotifications(next);
-    request('/notifications', { credentials, method: 'POST', body: {
+    request('/notifications', { method: 'POST', body: {
       eventKey: notification.id,
       taskId: notification.taskId,
       title: notification.title,
@@ -315,12 +315,12 @@ export default function App() {
     const next = notifications.map((item) => ({ ...item, read: true }));
     setNotifications(next);
     if (userEmail) writeLocalJson(notificationKey(userEmail), next);
-    request('/notifications/read', { credentials, method: 'PATCH' }).catch(() => {});
+    request('/notifications/read', { method: 'PATCH' }).catch(() => {});
   }
   function clearNotifications() {
     setNotifications([]);
     if (userEmail) { try { localStorage.removeItem(notificationKey(userEmail)); } catch {} }
-    request('/notifications', { credentials, method: 'DELETE' }).catch(() => {});
+    request('/notifications', { method: 'DELETE' }).catch(() => {});
   }
 
   useEffect(() => {
@@ -383,7 +383,7 @@ export default function App() {
   }, [tasks, userEmail]);
   async function saveTask(form) {
     try {
-      const data = await request(editing ? `/tasks/${editing.id}` : '/tasks', { credentials, method: editing ? 'PUT' : 'POST', body: form });
+      const data = await request(editing ? `/tasks/${editing.id}` : '/tasks', { method: editing ? 'PUT' : 'POST', body: form });
       if (data?.task) {
         const decorated = { ...data.task, notifyMe: data.task.notifyMe === true };
         if (!editing) setTasks((current) => [decorated, ...current]);
@@ -393,14 +393,14 @@ export default function App() {
     } catch (err) { setError(err.message); }
   }
   async function changeStatus(task, status) {
-    try { const result = await request(`/tasks/${task.id}/status`, { credentials, method: 'PATCH', body: { status } });
+    try { const result = await request(`/tasks/${task.id}/status`, { method: 'PATCH', body: { status } });
       setTasks((current) => [...current.filter((item) => item.id !== task.id), result.task, ...(result.nextTask ? [result.nextTask] : [])]);
       await load();
     } catch (err) { setError(err.message); }
   }
   async function deleteTask(task) {
     if (!window.confirm(`Delete “${task.title}”?`)) return;
-    try { await request(`/tasks/${task.id}`, { credentials, method: 'DELETE' }); setTasks((current) => current.filter((item) => item.id !== task.id)); await load(); }
+    try { await request(`/tasks/${task.id}`, { method: 'DELETE' }); setTasks((current) => current.filter((item) => item.id !== task.id)); await load(); }
     catch (err) { setError(err.message); }
   }
 

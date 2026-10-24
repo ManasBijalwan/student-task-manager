@@ -1,6 +1,7 @@
 import { httpServerHandler } from 'cloudflare:node';
 import app, { configureClientOrigin } from './app.js';
 import { configureDatabase } from './db.js';
+import { configureAuthSessionSecret } from './security/authSession.js';
 import { maintainRecurringHorizon } from './services/recurringTasks.js';
 
 const port = 3000;
@@ -13,6 +14,7 @@ function configureRuntime(env) {
   }
   configureDatabase(env.HYPERDRIVE.connectionString, { worker: true });
   configureClientOrigin(env.CLIENT_URL);
+  configureAuthSessionSecret(env.AUTH_TOKEN_SECRET);
 }
 
 export default {
