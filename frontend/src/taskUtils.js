@@ -15,7 +15,27 @@ export function formatTime(value) {
 
 export function dueTimestamp(task) {
   if (!task.dueDate) return null;
-  const timestamp = new Date(`${dateKey(task.dueDate)}T${task.dueTime ? formatTime(task.dueTime) : '23:59'}:00`).getTime();
+  const [year, month, day] = dateKey(task.dueDate).split('-').map(Number);
+  const [hour, minute] = (task.dueTime ? formatTime(task.dueTime) : '23:59').split(':').map(Number);
+  if (![year, month, day, hour, minute].every(Number.isFinite)) return null;
+
+  const timeZone = task.timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+  const target = Date.UTC(year, month - 1, day, hour, minute);
+  const formatter = new Intl.DateTimeFormat('en-US', {
+    timeZone, year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23'
+  });
+
+  // Convert the task's wall-clock deadline in its own time zone to a UTC timestamp.
+  let timestamp = target;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const parts = Object.fromEntries(formatter.formatToParts(new Date(timestamp)).map(({ type, value }) => [type, value]));
+    const represented = Date.UTC(Number(parts.year), Number(parts.month) - 1, Number(parts.day),
+      Number(parts.hour), Number(parts.minute), Number(parts.second));
+    const adjustment = target - represented;
+    timestamp += adjustment;
+    if (adjustment === 0) break;
+  }
   return Number.isFinite(timestamp) ? timestamp : null;
 }
 
