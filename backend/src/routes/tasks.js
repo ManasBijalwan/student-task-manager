@@ -68,6 +68,7 @@ router.post('/', async (req, res, next) => {
     );
     const created = result.rows[0];
     await materializeRecurringOccurrences(client, { ...created, userId: req.user.id });
+    await writeTaskCreatedNotifications(client, req.user.id, [created]);
     await writeHistory(client, { userId: req.user.id, taskId: created.id, title: created.title, action: 'created', newStatus: created.status });
     await client.query('COMMIT');
     res.status(201).json({ task: created });

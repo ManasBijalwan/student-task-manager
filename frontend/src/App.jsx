@@ -305,16 +305,6 @@ export default function App() {
       });
     }).catch(() => {});
   }
-  function addTaskCreatedNotification(task) {
-    const deadline = dueTimestamp(task);
-    addNotification({
-      id: `created:${task.id}`,
-      taskId: task.id,
-      title: 'Task added',
-      message: `${task.title} was added${deadline ? ` · ${remainingLabel(deadline)}` : ''}.`,
-      priority: task.priority
-    });
-  }
   function markNotificationsRead() {
     const next = notifications.map((item) => ({ ...item, read: true }));
     setNotifications(next);
@@ -366,8 +356,7 @@ export default function App() {
           });
         }
         if (now >= deadline - 5 * 60_000 && now < deadline) {
-          const minute = Math.floor(now / 60_000);
-          const id = `last-five:${task.id}:${deadline}:${minute}`;
+          const id = `last-five:${task.id}:${deadline}`;
           if (!known.has(id)) {
             known.add(id);
             addNotification({
@@ -391,7 +380,6 @@ export default function App() {
       if (data?.task) {
         const decorated = { ...data.task, notifyMe: data.task.notifyMe === true };
         if (!editing) setTasks((current) => [decorated, ...current]);
-        if (!editing && decorated.notifyMe) addTaskCreatedNotification(decorated);
       }
       setShowForm(false); setEditing(null); await load();
     } catch (err) { setError(err.message); }
@@ -409,7 +397,6 @@ export default function App() {
   }
 
   function toggleNotifications() {
-    if (!notificationOpen) markNotificationsRead();
     setNotificationOpen(!notificationOpen);
   }
 
